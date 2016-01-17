@@ -36,6 +36,9 @@ public class MovementScript : MonoBehaviour {
         startingPosition_ = transform.position;
         startingRotation_ = transform.rotation;
 
+        float gravityMultiplier = 1.0f;
+        Physics.gravity = -transform.up * Physics.gravity.magnitude * gravityMultiplier;
+
         trackLayerMask_ = LayerMask.NameToLayer("Track");
     }
 
@@ -55,59 +58,14 @@ public class MovementScript : MonoBehaviour {
             ResetShip();
         }
 
-        // Movement and tilting in the yaw
+        // Tilting in the yaw
         Turning(horizontalInputAxis);
-        float sign = Mathf.Sign(Vector3.Dot(transform.forward, velocity_));
-        velocity_ = sign * transform.forward * velocity_.magnitude + transform.forward * verticalInputAxis * forwardAcceleration * Time.fixedDeltaTime;
 
-        // TODO(jaween): Rethink friction implementation
-        const float minVelocityForFriction = 0.05f;
-        if (velocity_.magnitude > minVelocityForFriction)
-        {
-            velocity_ -= Vector3.Normalize(velocity_) * (friction * Time.fixedDeltaTime);
-        }
+        ForwardMovement(verticalInputAxis);
 
-        // Enforces the max speed
-        velocity_ = Vector3.ClampMagnitude(velocity_, maxForwardSpeed);
-         
-        // Aligns the ship to the platform immediately below
-        const float rayLength = 1.5f;
-        RaycastHit hit = new RaycastHit();
-        if (Physics.Raycast(transform.position, -transform.up, out hit, rayLength, trackLayerMask_))
-        {
-            float angle = Vector3.Angle(transform.up, hit.normal);
-            if (angle <= maxRealignmentAngle)
-            {
-                // Realigns the ship
-                transform.position = hit.point + hit.normal;
-                transform.rotation = Quaternion.LookRotation(Vector3.Cross(transform.right, hit.normal), hit.normal);
+        ShipHover();
 
-                // Sets the new gravity direction
-                Physics.gravity = -hit.normal * Physics.gravity.magnitude;
-            }
-
-            // Jumping
-            if (Input.GetButtonDown("Fire1") && jumpEnabled)
-            {
-                const float moveDistance = 0.5f;
-                rigidbody_.MovePosition(transform.position + transform.up * moveDistance);
-                upwardVelocity_ = 4.0f;
-            }
-        }
-        else if (jumpEnabled && !rigidbody_.SweepTest(-transform.up, out hit, 1.0f))
-        {
-            // Applies gravity
-            upwardVelocity_ -= Physics.gravity.magnitude * Time.fixedDeltaTime;
-        }
-        
-        // Smoothly interpolates the position of the mesh to that of the ship's collider
-        visualNode.transform.position = transform.position;
-        //visualNode.transform.position = Vector3.Lerp(visualNode.transform.position, transform.position, Time.fixedDeltaTime * velocity_);
-
-        // Smoothly interpolates the rotation of the mesh to that of the ship's collider
-        Quaternion fromRotation = visualNode.transform.rotation;
-        Quaternion toRotation = transform.rotation;
-        visualNode.transform.rotation = Quaternion.Slerp(fromRotation, toRotation, Time.fixedDeltaTime * 6.0f);
+        AnimateMesh();
 
         // Applies the computed velocity to the RigidBody
         rigidbody_.velocity = velocity_;
@@ -152,6 +110,66 @@ public class MovementScript : MonoBehaviour {
         // Turns the ship
         transform.rotation *= Quaternion.Euler(0.0f, turnMultiplier * turn * Time.fixedDeltaTime, 0.0f);
         //AnimateTurn(turn);
+    }
+
+    void ForwardMovement(float axisAmount)
+    {
+        float sign = Mathf.Sign(Vector3.Dot(transform.forward, velocity_));
+        velocity_ = sign * transform.forward * velocity_.magnitude + transform.forward * axisAmount * forwardAcceleration * Time.fixedDeltaTime;
+
+        // TODO(jaween): Rethink friction implementation
+        const float minVelocityForFriction = 0.05f;
+        if (velocity_.magnitude > minVelocityForFriction)
+        {
+            velocity_ -= Vector3.Normalize(velocity_) * (friction * Time.fixedDeltaTime);
+        }
+
+        // Enforces the max speed
+        velocity_ = Vector3.ClampMagnitude(velocity_, maxForwardSpeed);
+    }
+
+    void ShipHover()
+    {
+        // Aligns the ship to the platform immediately below
+        const float rayLength = 1.5f;
+        RaycastHit hit = new RaycastHit();
+        if (Physics.Raycast(transform.position, -transform.up, out hit, rayLength, trackLayerMask_))
+        {
+            float angle = Vector3.Angle(transform.up, hit.normal);
+            if (angle <= maxRealignmentAngle)
+            {
+                // Realigns the ship
+                transform.position = hit.point + hit.normal;
+                transform.rotation = Quaternion.LookRotation(Vector3.Cross(transform.right, hit.normal), hit.normal);
+
+                // Sets the new gravity direction
+                Physics.gravity = -hit.normal * Physics.gravity.magnitude;
+            }
+
+            // Jumping
+            if (Input.GetButtonDown("Fire1") && jumpEnabled)
+            {
+                rigidbody_.MovePosition(transform.position + transform.up * 0.5f);
+                velocity_ += transform.up * 4.0f;
+            }
+        }
+        else if (!rigidbody_.SweepTest(-transform.up, out hit, 1.0f))
+        {
+            // Applies gravity
+            //velocity_ += Physics.gravity * Time.fixedDeltaTime;
+        }
+    }
+
+    void AnimateMesh()
+    {
+        // Smoothly interpolates the position of the mesh to that of the ship's collider
+        visualNode.transform.position = transform.position;
+        //visualNode.transform.position = Vector3.Lerp(visualNode.transform.position, transform.position, Time.fixedDeltaTime * velocity_);
+
+        // Smoothly interpolates the rotation of the mesh to that of the ship's collider
+        Quaternion fromRotation = visualNode.transform.rotation;
+        Quaternion toRotation = transform.rotation;
+        visualNode.transform.rotation = Quaternion.Slerp(fromRotation, toRotation, Time.fixedDeltaTime * 6.0f);
     }
 
     void SlowDown(Collision collision)
