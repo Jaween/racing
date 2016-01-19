@@ -11,12 +11,14 @@ public class MovementScript : MonoBehaviour {
     public float maxRealignmentAngle;
 
     public bool jumpEnabled;
+    public bool smoothingEnabled;
 
     public GameObject visualNode;
     public MeshRenderer meshRenderer;
     public Text debugText;
 
     private int trackLayerMask_;
+    private float forwardVelocity_ = 0;
     private float upwardVelocity_ = 0;
     bool isTurning = false;
     float turnStartTime = 0;
@@ -24,7 +26,6 @@ public class MovementScript : MonoBehaviour {
     private Rigidbody rigidbody_;
     private Vector3 startingPosition_;
     private Quaternion startingRotation_;
-    private Vector3 velocity_ = Vector3.zero;
 
     void Start() {
         rigidbody_ = GetComponent<Rigidbody>();
@@ -36,8 +37,8 @@ public class MovementScript : MonoBehaviour {
         startingPosition_ = transform.position;
         startingRotation_ = transform.rotation;
 
-        float gravityMultiplier = 1.0f;
-        Physics.gravity = -transform.up * Physics.gravity.magnitude * gravityMultiplier;
+        float gravityMultiplier = 2.0f;
+        Physics.gravity *= gravityMultiplier;
 
         trackLayerMask_ = LayerMask.NameToLayer("Track");
     }
@@ -45,8 +46,10 @@ public class MovementScript : MonoBehaviour {
     void Update()
     {
         // Debug UI
-        debugText.text = "Velocity: " + velocity_ + "\nSpeed: " + velocity_.magnitude;
-        Debug.DrawLine(transform.position, transform.position + velocity_, Color.red);
+        debugText.text = "Speed: " + forwardVelocity_;
+        Debug.DrawLine(transform.position, transform.position + rigidbody_.velocity, Color.red);
+
+        AnimateMesh();
     }
 
     void FixedUpdate() {
@@ -65,31 +68,29 @@ public class MovementScript : MonoBehaviour {
 
         ShipHover();
 
-        AnimateMesh();
-
         // Applies the computed velocity to the RigidBody
-        rigidbody_.velocity = velocity_;
+        ApplyVelocity();
     }
-    
+
     void OnCollisionEnter(Collision collision)
     {
-        SlowDown(collision);
+        SlowDownAlongWall(collision);
     }
 
     void OnCollisionStay(Collision collision)
     {
-        SlowDown(collision);
+        SlowDownAlongWall(collision);
     }
 
-    void Turning(float axisAmount)
+    private void Turning(float axisAmount)
     {
         const float superTurnDelay = 0.5f;
         const float turnMultiplier = 40.0f;
-        const float maxAxisAmount = 1.0f;
+        const float superTurnActivationAxisThreshold = 0.9f;
         const float superTurnMultiplier = 1.5f;
 
         float turn = axisAmount;
-        if (Mathf.Abs(axisAmount) == maxAxisAmount)
+        if (Mathf.Abs(axisAmount) >= superTurnActivationAxisThreshold)
         {
             if (!isTurning)
             {
@@ -112,23 +113,23 @@ public class MovementScript : MonoBehaviour {
         //AnimateTurn(turn);
     }
 
-    void ForwardMovement(float axisAmount)
+    private void ForwardMovement(float axisAmount)
     {
-        float sign = Mathf.Sign(Vector3.Dot(transform.forward, velocity_));
-        velocity_ = sign * transform.forward * velocity_.magnitude + transform.forward * axisAmount * forwardAcceleration * Time.fixedDeltaTime;
+        forwardVelocity_ = forwardVelocity_ + (axisAmount * forwardAcceleration) * Time.fixedDeltaTime;
 
         // TODO(jaween): Rethink friction implementation
         const float minVelocityForFriction = 0.05f;
-        if (velocity_.magnitude > minVelocityForFriction)
+        if (Mathf.Abs(forwardVelocity_) > minVelocityForFriction)
         {
-            velocity_ -= Vector3.Normalize(velocity_) * (friction * Time.fixedDeltaTime);
+            // TODO(jaween): Reenable friction when slowing down along walls is fixed
+            forwardVelocity_ -= friction * Time.fixedDeltaTime;
         }
 
         // Enforces the max speed
-        velocity_ = Vector3.ClampMagnitude(velocity_, maxForwardSpeed);
+        forwardVelocity_ = Mathf.Clamp(forwardVelocity_, -maxForwardSpeed, maxForwardSpeed);
     }
 
-    void ShipHover()
+    private void ShipHover()
     {
         // Aligns the ship to the platform immediately below
         const float rayLength = 1.5f;
@@ -146,43 +147,58 @@ public class MovementScript : MonoBehaviour {
                 Physics.gravity = -hit.normal * Physics.gravity.magnitude;
             }
 
+            upwardVelocity_ = 0.0f;
+
             // Jumping
             if (Input.GetButtonDown("Fire1") && jumpEnabled)
             {
                 rigidbody_.MovePosition(transform.position + transform.up * 0.5f);
-                velocity_ += transform.up * 4.0f;
+                upwardVelocity_ += 4.0f * Time.fixedDeltaTime;
             }
         }
         else if (!rigidbody_.SweepTest(-transform.up, out hit, 1.0f))
         {
             // Applies gravity
-            //velocity_ += Physics.gravity * Time.fixedDeltaTime;
+            // TODO(jaween): Combine test for hovering and gravity
+            upwardVelocity_ += Mathf.Sign(Vector3.Dot(transform.up, Physics.gravity)) * Physics.gravity.magnitude * Time.fixedDeltaTime;
         }
     }
 
     void AnimateMesh()
     {
         // Smoothly interpolates the position of the mesh to that of the ship's collider
-        visualNode.transform.position = transform.position;
-        //visualNode.transform.position = Vector3.Lerp(visualNode.transform.position, transform.position, Time.fixedDeltaTime * velocity_);
+        if (smoothingEnabled)
+        {
+            visualNode.transform.position = Vector3.Lerp(visualNode.transform.position, transform.position, Time.deltaTime * (rigidbody_.velocity.magnitude / maxForwardSpeed * 5.0f + 4.0f));
+        }
+        else
+        {
+            visualNode.transform.position = transform.position;
+        }
 
         // Smoothly interpolates the rotation of the mesh to that of the ship's collider
         Quaternion fromRotation = visualNode.transform.rotation;
         Quaternion toRotation = transform.rotation;
-        visualNode.transform.rotation = Quaternion.Slerp(fromRotation, toRotation, Time.fixedDeltaTime * 6.0f);
+        visualNode.transform.rotation = Quaternion.Slerp(fromRotation, toRotation, Time.deltaTime * 3.0f);
     }
 
-    void SlowDown(Collision collision)
+    private void ApplyVelocity()
     {
-        const float slowDownMultiplier = 3.0f;
-        Vector3 clippingComponent = Vector3.Project(velocity_, collision.contacts[0].normal);
+        rigidbody_.velocity = transform.forward * forwardVelocity_ + transform.up * upwardVelocity_;
+    }
 
-        // Reduces the speed of the ship proportionally to the incident angle to the wall squared
-        // Sliding parallel to a wall slows velocity slightly, ramming perpendicular to a wall slows velocity considerably
-        float dotProduct = Vector3.Dot(Vector3.Normalize(collision.contacts[0].normal), Vector3.Normalize(velocity_));
+    // Reduces the speed of the ship proportionally to the incident angle to the wall squared
+    // So brushing the wall reduces speed slightly, while ramming head on into a wall slows speed considerably
+    private void SlowDownAlongWall(Collision collision)
+    {
+        // Squaring or absolute value is needed to make the dot product positive
+        // TODO(jaween): Fix dot product
+        const float slowDownMultiplier = 3.0f;
+
+        float dotProduct = Vector3.Dot(-collision.contacts[0].normal, transform.forward);
         float dotProductSquared = dotProduct * dotProduct;
-        velocity_ *= 1 - slowDownMultiplier * dotProductSquared * Time.fixedDeltaTime;
-        rigidbody_.velocity = velocity_;
+        forwardVelocity_ *= 1 - (slowDownMultiplier * dotProductSquared * Time.fixedDeltaTime);
+        ApplyVelocity();
 
         Debug.DrawLine(collision.contacts[0].point, collision.contacts[0].point + 2 * collision.contacts[0].normal, Color.cyan);
     }
@@ -192,21 +208,24 @@ public class MovementScript : MonoBehaviour {
     {
         // TODO(jaween): When y-axis rotation isn't locked and the ship's nose is pointed upwards, this rotation code erronously flips the ship so its belly faces the camera
         const float tiltSmoothing = 10.0f;
+        //Debug.Log("Euler angle z is " + transform.rotation.eulerAngles.z);
         Quaternion from = meshRenderer.transform.rotation;
         Quaternion to = Quaternion.Euler(meshRenderer.transform.rotation.eulerAngles.x, meshRenderer.transform.rotation.eulerAngles.y, angle * -maxTurnAngle);
         meshRenderer.transform.rotation = Quaternion.Slerp(from, to, Time.fixedDeltaTime * tiltSmoothing);
     }
-
+    
     private void ResetShip()
     {
         transform.position = startingPosition_;
         transform.rotation = startingRotation_;
+        Physics.gravity = -transform.up * Physics.gravity.magnitude;
 
         visualNode.transform.position = transform.position;
         visualNode.transform.rotation = transform.rotation;
 
         rigidbody_.velocity = Vector3.zero;
-        velocity_ = Vector3.zero;
+        forwardVelocity_ = 0;
+        upwardVelocity_ = 0;
         rigidbody_.angularVelocity = Vector3.zero;
     }
 
