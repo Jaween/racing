@@ -13,7 +13,6 @@ public class MovementScript : MonoBehaviour {
     public float jumpSpeed;
     public float gravity;
     public float hoverHeight;
-
     public bool jumpEnabled;
     public bool smoothingEnabled;
 
@@ -133,7 +132,7 @@ public class MovementScript : MonoBehaviour {
         // Applies the turn on the ship
         transform.rotation *= Quaternion.Euler(
                 0.0f, turnMultiplier * turn * Time.fixedDeltaTime, 0.0f);
-        //AnimateTurn(turn);
+        AnimateTurn(turn);
     }
 
     private void ShipForwardMovement(float axisAmount)
@@ -275,17 +274,15 @@ public class MovementScript : MonoBehaviour {
     // Rotates the mesh slightly without rolling the ship's collider
     private void AnimateTurn(float angle)
     {
-        // TODO(jaween): When transform goes upside down, this doesn't work
         const float tiltSmoothing = 5.0f;
         Quaternion from = meshRenderer.transform.rotation;
         Quaternion to = Quaternion.Euler(
-            meshRenderer.transform.rotation.eulerAngles.x, 
-            meshRenderer.transform.rotation.eulerAngles.y, 
-            angle * -maxTurnAngle);
+            transform.rotation.eulerAngles.x,
+            transform.rotation.eulerAngles.y,
+            transform.rotation.eulerAngles.z - angle * maxRealignmentAngle);
+        
         meshRenderer.transform.rotation = 
             Quaternion.Slerp(from, to, Time.fixedDeltaTime * tiltSmoothing);
-
-        //Debug.Log("Euler angle z is " + transform.rotation.eulerAngles.z);
     }
 
     private void ResetShip()
