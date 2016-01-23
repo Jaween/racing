@@ -2,7 +2,7 @@
 using UnityEngine.UI;
 using System.Collections;
 
-public class MovementScript : MonoBehaviour {
+public class PrototypeMovementScript : MonoBehaviour {
 
     public float forwardAcceleration;
     public float maxForwardSpeed;

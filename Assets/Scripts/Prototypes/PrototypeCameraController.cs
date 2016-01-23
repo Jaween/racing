@@ -1,7 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 
-public class CameraController : MonoBehaviour {
+public class PrototypeCameraController : MonoBehaviour {
 
     public PlayerController playerController;
     public Transform cameraNode;
