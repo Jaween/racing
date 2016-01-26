@@ -17,7 +17,6 @@ public class MovementScript : MonoBehaviour {
     public bool jumpEnabled;
     public bool smoothingEnabled;
     public MeshRenderer meshRenderer;
-    public Text debugText;
 
     private float forwardVelocity_;
     private float upwardVelocity_;
@@ -51,7 +50,6 @@ public class MovementScript : MonoBehaviour {
     void Update()
     {
         // Velocity debug UI
-        debugText.text = "Speed: " + forwardVelocity_;
         Debug.DrawLine(transform.position, 
             transform.position + rigidbody_.velocity, Color.red);
 
@@ -177,7 +175,7 @@ public class MovementScript : MonoBehaviour {
 
             // TODO(jaween): Do we really need a ray cast here? 
             // Could we remove it and rely solely on the sweep test above?
-            if (Physics.Raycast(colliderEdgePoint, -transform.up, out hit, 
+            if (Physics.Raycast(colliderEdgePoint, -transform.up, out hit,
                 rayLength))
             {
                 upwardVelocity_ = 0.0f;
@@ -187,7 +185,7 @@ public class MovementScript : MonoBehaviour {
                 {
                     // Realigns the ship
                     transform.position = 
-                        newHitPoint + hit.normal * hoverHeight;
+                        hit.point    + hit.normal * hoverHeight;
                     transform.rotation = Quaternion.LookRotation(
                         Vector3.Cross(transform.right, hit.normal), 
                         hit.normal);

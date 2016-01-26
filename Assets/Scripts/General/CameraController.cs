@@ -10,19 +10,35 @@ public class CameraController : MonoBehaviour {
     public float maxPositionLerpMultiplier;
     public float maxRotationLag;
     public float rotationLerpMultiplier;
-    public float minFov;
 
-    void Update()
+    void FixedUpdate()
     {
+        // Moves the camera behind the camera node
         Vector3 fromPosition = transform.position;
         Vector3 toPosition = cameraNode.transform.position -
             distanceFromNode * cameraNode.transform.forward;
-        transform.position = Vector3.Lerp(fromPosition, toPosition,
-            Time.deltaTime * maxPositionLerpMultiplier);
+        Vector3 deltaPosition = (toPosition - fromPosition) * 
+            Time.fixedDeltaTime * maxPositionLerpMultiplier;
+        Vector3 movementDirection = Vector3.Normalize(deltaPosition);
+        
+        // Attempts to slide along walls rather than clipping into them
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position, movementDirection, out hit, 
+            Time.fixedDeltaTime * maxPositionLerpMultiplier))
+        {
+            if (Vector3.Dot(deltaPosition, hit.normal) < 0)
+            {
+                deltaPosition -= Vector3.Project(deltaPosition, hit.normal);
+            }
+        }
+        transform.position = transform.position + deltaPosition;
 
+        // Rotates camera toward the camera node
         Quaternion fromRotation = transform.rotation;
-        Quaternion toRotation = cameraNode.transform.rotation;
+        Quaternion toRotation = Quaternion.LookRotation(
+            cameraNode.transform.position - 
+            transform.position, cameraNode.transform.up);
         transform.rotation = Quaternion.Slerp(fromRotation, toRotation,
-              Time.deltaTime * rotationLerpMultiplier);
+               Time.fixedDeltaTime * rotationLerpMultiplier);
     }
 }
